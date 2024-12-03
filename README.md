@@ -1,7 +1,7 @@
 # HEAL: Healthcare Emergency Assistants Leveraging Large Language Models
 
 This repository contains both the backend and frontend components of the HEAL application.
-![HEAL](./HEAL%Process.png)
+![HEAL](./HEAL%20Process.png)
 
 ## Getting Started
 
