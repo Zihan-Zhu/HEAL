@@ -413,7 +413,7 @@ async def extract_patient_info(conversation, curr_status):
                     2. Breathing (B): Respiratory rate, distress level, any breathing difficulties noted
                     3. Circulation (C): Heart rate, blood pressure, skin condition, fluid balance issues
                     4. Disability (D): Consciousness level, behaviour changes, pain score (if given)
-                    5. Exposure/Environment (E): Temperature, skin abnormalities mentioned
+                    5. Environment (E): For example, body temperature, skin abnormalities mentioned
 
                     Focused assessment
                     Identify any additional physiological data mentioned related to the presenting problem
