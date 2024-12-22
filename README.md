@@ -6,6 +6,9 @@
 This repository contains both the backend and frontend components of the HEAL application.
 
 ## Demo Video
+
+Click anywhere below to start.
+
 [![HEAL Demo](demo_cover.jpeg)](https://youtu.be/qFew6FUd1gU)
 
 ## Getting Started
