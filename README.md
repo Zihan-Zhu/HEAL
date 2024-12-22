@@ -4,7 +4,7 @@ This repository contains both the backend and frontend components of the HEAL ap
 ![HEAL](./HEAL%20Process.png)
 
 ## Demo Video
-[![HEAL Demo](demo_cover.png)](https://youtu.be/qFew6FUd1gU)
+[![HEAL Demo](demo_cover.jpeg)](https://youtu.be/qFew6FUd1gU)
 
 ## Getting Started
 
