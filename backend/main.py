@@ -96,9 +96,19 @@ async def chat(conversation: Conversation):
         #patient_info_dict.update({k: v for k, v in new_info.items() if v})
         #update_patient_info_dict(patient_info_dict, new_info)
     if len(conversation.messages) > 2 and len(conversation.messages) % 2 == 0:
-        new_info = await extract_patient_info(conversation.messages[-2:], patient_info_dict)
-        #patient_info_dict.update({k: v for k, v in new_info.items() if v})
-        update_patient_info_dict(patient_info_dict, new_info)
+        #new_info = await extract_patient_info(conversation.messages[-2:], patient_info_dict)
+        #update_patient_info_dict(patient_info_dict, new_info)
+        try:
+            new_info = await extract_patient_info(conversation.messages[-2:], patient_info_dict)
+            update_patient_info_dict(patient_info_dict, new_info)
+        except Exception as e:
+            #print(f"Error during extract_patient_info: {e}")
+            try:
+                fallback_messages = conversation.messages[-4:] if len(conversation.messages) >= 4 else conversation.messages
+                new_info = await extract_patient_info(fallback_messages, patient_info_dict)
+                update_patient_info_dict(patient_info_dict, new_info)
+            except Exception as e:
+                print(f"Error during fallback extract_patient_info: {e}")
 
     print(f"patient_info_dict: {patient_info_dict}")
 
@@ -113,7 +123,7 @@ async def chat(conversation: Conversation):
     # Check if all required fields are filled
     #info_complete = all(patient_info_dict.values())
     info_complete = check_info_complete(patient_info_dict)
-    if info_complete:
+    if info_complete or len(conversation.messages) >= 28:
         # We label an ATS category for this patient
         ats_category = await get_ats_category(patient_info_dict)
         #print(ats_category)
@@ -453,7 +463,7 @@ async def extract_patient_info(conversation, curr_status):
                         - Risk of harm, such as domestic or family violence, child abuse, elder abuse or neglect
 
                     Response Format
-                    Your response should strictly follow the format below:
+                    Your response should strictly follow the format below. Do not include any other text outside the brackets:
                     {{
                         "name": "",
                         "age": "",
@@ -524,7 +534,7 @@ async def extract_monitoring_info(conversation, patient_info):
         5. Detect any red flags or urgent changes that may require immediate medical attention.
 
         Response Format
-        Your response should be strictly in the following Python dictionary format:
+        Your response should be strictly in the following Python dictionary format. Do not include any other text outside the brackets:
                 {{
                     "condition_change": "Detailed summary of condition changes"
                 }}
@@ -599,7 +609,7 @@ async def retriage_complete (patient_info, conversation):
         3. Consider ending if the patient indicates they have nothing more to add
         4. Conclude the conversation if it becomes circular, unproductive, or strays from the patient’s initial information
 
-        Your response should be strictly in the following Python dictionary format, without providing any additional reasons:
+        Your response should be strictly in the following Python dictionary format, without providing any additional reasons. Do not include any other text outside the brackets:
         {{
             "is_complete": boolean value ("True" or "False")
         }}
