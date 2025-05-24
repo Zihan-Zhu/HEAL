@@ -49,16 +49,9 @@ If you find it useful, please consider citing our work:
     author = {Zhu, Zihan and Xu, Qiongkai and Beheshti, Amin},
     title = {HEAL: Healthcare Emergency Assistants Leveraging Large Language Models},
     year = {2025},
-    isbn = {9798400713316},
-    publisher = {Association for Computing Machinery},
-    address = {New York, NY, USA},
     url = {https://doi.org/10.1145/3701716.3715181},
     doi = {10.1145/3701716.3715181},
     booktitle = {Companion Proceedings of the ACM on Web Conference 2025},
-    pages = {2959–2962},
-    numpages = {4},
-    keywords = {digital assistance, emergency department, large language model, triage categorization},
-    location = {Sydney NSW, Australia},
-    series = {WWW '25}
+    pages = {2959–2962}
 }
 ```
