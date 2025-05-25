@@ -1,0 +1,20 @@
+{
+  "patient_id": "33739",
+  "name": "Zihan",
+  "age": "23",
+  "gender": "Male",
+  "arrival_time": "2025-05-25T16:03:41.483666",
+  "presenting_problem": "Experiencing stomach pain.",
+  "associated_symptoms": "Vomiting several times yesterday.",
+  "primary_survey": {
+    "A": "No difficulty breathing or airway blockage",
+    "B": "",
+    "C": "",
+    "D": "",
+    "E": ""
+  },
+  "focused_assessment": "",
+  "pertinent_history": "",
+  "red_flags": "No obvious red flags",
+  "ats_category": "Category 5 (Non-urgent)"
+}

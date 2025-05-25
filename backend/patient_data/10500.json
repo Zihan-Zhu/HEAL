@@ -1,0 +1,20 @@
+{
+  "patient_id": "10500",
+  "name": "Zihan",
+  "age": "23",
+  "gender": "Male",
+  "arrival_time": "2025-05-25T15:31:58.758163",
+  "presenting_problem": "Extreme headache",
+  "associated_symptoms": "Sensitive to light",
+  "primary_survey": {
+    "A": "patent",
+    "B": "",
+    "C": "",
+    "D": "",
+    "E": ""
+  },
+  "focused_assessment": "",
+  "pertinent_history": "",
+  "red_flags": "No obvious red flags",
+  "ats_category": "Category 4 (Semi-urgent)"
+}

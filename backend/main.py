@@ -4,7 +4,9 @@ import random
 import ast
 import asyncio
 import docx
-from fastapi import FastAPI, HTTPException
+import io
+import base64
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -35,6 +37,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 class Conversation(BaseModel):
     messages: List[dict]
     patient_id: Optional[str] = None
+    end_conversation: bool = False
 
 PATIENT_INFO_FIELDS = [
     "name", "age", "gender", "presenting_problem", "associated_symptoms", "primary_survey", "focused_assessment", "pertinent_history", "red_flags"
@@ -51,44 +54,43 @@ WAITING_TIMES = {
     'Category 5 (Non-urgent)': '120 minutes'
 }
 
-patient_info_dict = {
-    "patient_id": "",
-    "name": "",
-    "age": "",
-    "gender": "",
-    "arrival_time": "",
-    "presenting_problem": "",
-    "associated_symptoms": "",
-    "primary_survey":{
-        "A": "",
-        "B": "",
-        "C": "",
-        "D": "",
-        "E": ""
-    },
-    "focused_assessment": "",
-    "pertinent_history": "",
-    "red_flags": ""
-}
-
-
-monitoring_info_dict = {
-    "retriage_time": "", 
-    "condition_change": ""
-}
+# Patient data is now managed per-session in patient_data dictionary
 
 # Store all patient info from both modes (temporal var)
 patient_data = {}
 
 @app.post("/chat") # Registration and Triage Mode
 async def chat(conversation: Conversation):
-    global patient_info_dict, patient_data
+    global patient_data
 
     # Initialize patient_id if not provided
     if not conversation.patient_id:
         conversation.patient_id = generate_patient_id()
-        patient_info_dict['patient_id'] = conversation.patient_id
-        patient_info_dict['arrival_time'] = datetime.now().isoformat()
+        
+    # Create a fresh patient_info_dict for this conversation/patient
+    if conversation.patient_id not in patient_data:
+        patient_info_dict = {
+            "patient_id": conversation.patient_id,
+            "name": "",
+            "age": "",
+            "gender": "",
+            "arrival_time": datetime.now().isoformat(),
+            "presenting_problem": "",
+            "associated_symptoms": "",
+            "primary_survey":{
+                "A": "",
+                "B": "",
+                "C": "",
+                "D": "",
+                "E": ""
+            },
+            "focused_assessment": "",
+            "pertinent_history": "",
+            "red_flags": ""
+        }
+        patient_data[conversation.patient_id] = patient_info_dict
+    else:
+        patient_info_dict = patient_data[conversation.patient_id]
 
     # Extract information periodically
     #if len(conversation.messages) == 6:
@@ -114,16 +116,14 @@ async def chat(conversation: Conversation):
 
     # Update patient_data whenever new information is extracted
     if conversation.patient_id:
-        if conversation.patient_id not in patient_data:
-            patient_data[conversation.patient_id] = {}
-        patient_data[conversation.patient_id].update(patient_info_dict)
+        patient_data[conversation.patient_id] = patient_info_dict
     
     print(f"patient_data: {patient_data}")
 
-    # Check if all required fields are filled
+    # Check if all required fields are filled (End the conversation)
     #info_complete = all(patient_info_dict.values())
     info_complete = check_info_complete(patient_info_dict)
-    if info_complete or len(conversation.messages) >= 28:
+    if info_complete or len(conversation.messages) >= 28 or conversation.end_conversation:
         # We label an ATS category for this patient
         ats_category = await get_ats_category(patient_info_dict)
         #print(ats_category)
@@ -152,26 +152,7 @@ async def chat(conversation: Conversation):
                     Please note that this is an initial assessment, and priority may change based on ongoing evaluations and the condition of other patients in the emergency department."""
 
         
-        # Reset the dictionary for the next patient
-        patient_info_dict = {
-            "patient_id": "",
-            "name": "",
-            "age": "",
-            "gender": "",
-            "arrival_time": "",
-            "presenting_problem": "",
-            "associated_symptoms": "",
-            "primary_survey":{
-                "A": "",
-                "B": "",
-                "C": "",
-                "D": "",
-                "E": ""
-            },
-            "focused_assessment": "",
-            "pertinent_history": "",
-            "red_flags": ""
-        }
+        # Patient info is already saved, no need to reset global dict since we use patient-specific dicts
 
         # Reset the entire conversation
         conversation.messages = []
@@ -199,15 +180,7 @@ async def chat(conversation: Conversation):
 
 @app.post("/monitor_patient") # Monitoring Mode
 async def monitor_patient(conversation: Conversation):
-    global monitoring_info_dict, patient_data
-
-    # If this is the first message, provide the greeting
-    #if len(conversation.messages) == 0:
-        #return {
-            #"response": "Welcome to the ED Patient Monitoring System. Please enter your patient ID to track your condition.",
-            #"patient_id": None,
-           # "reset_conversation": False
-        #}
+    global patient_data
 
     #print(f"conversation length: {conversation.messages}")
 
@@ -219,7 +192,6 @@ async def monitor_patient(conversation: Conversation):
         
         if os.path.exists(monitoring_file):
             conversation.patient_id = potential_id
-            monitoring_info_dict["retriage_time"] = datetime.now().isoformat()
         else:
             return {
                 "response": "Patient ID not found. Please check your ID and try again.",
@@ -234,6 +206,17 @@ async def monitor_patient(conversation: Conversation):
     with open(patient_file, 'r') as f:
         patient_info = json.load(f)
     
+    # Create or get monitoring info for this patient
+    monitoring_key = f"{conversation.patient_id}_monitoring_session"
+    if monitoring_key not in patient_data:
+        monitoring_info_dict = {
+            "retriage_time": datetime.now().isoformat(), 
+            "condition_change": ""
+        }
+        patient_data[monitoring_key] = monitoring_info_dict
+    else:
+        monitoring_info_dict = patient_data[monitoring_key]
+    
     if len(conversation.messages) > 2 and len(conversation.messages) % 2 == 0:
         new_info = await extract_monitoring_info(conversation.messages, patient_info)
         monitoring_info_dict.update({k: v for k, v in new_info.items() if v})
@@ -243,23 +226,21 @@ async def monitor_patient(conversation: Conversation):
 
     # Update patient_data with monitoring information
     if conversation.patient_id:
-        if conversation.patient_id not in patient_data:
-            patient_data[conversation.patient_id] = {}
-        patient_data[conversation.patient_id].update(monitoring_info_dict)
+        patient_data[monitoring_key] = monitoring_info_dict
 
     if len(conversation.messages) > 2:
         retriage_result = await retriage_complete(patient_info, conversation.messages[2:])
         #print(retriage_result["is_complete"])
 
     # End the conversation
-    if len(conversation.messages) > 2 and len(conversation.messages) % 2 == 0 and retriage_result["is_complete"] == True:
+    if (len(conversation.messages) > 2 and len(conversation.messages) % 2 == 0 and retriage_result["is_complete"] == True) or conversation.end_conversation:
 
         # Now we assign an ATS label based on the patient_info + monitoring_info_dict
         ats_category = await get_ats_category(patient_info, monitoring_info_dict)
         ats_category = ast.literal_eval(ats_category)
         monitoring_info_dict["ats_category_retriage"] = ats_category["ats_category"]
 
-        patient_data[conversation.patient_id].update(monitoring_info_dict)
+        patient_data[monitoring_key].update(monitoring_info_dict)
 
         # Check whether the monitoring file is empty or not
         with open(monitoring_file, 'r') as f:
@@ -284,11 +265,9 @@ async def monitor_patient(conversation: Conversation):
             waiting_time=WAITING_TIMES.get(monitoring_info_dict["ats_category_retriage"])
         )
         
-        # Reset the dictionary for the next monitoring session
-        monitoring_info_dict = {
-            "retriage_time": "", 
-            "condition_change": ""
-        }
+        # Remove the monitoring session from memory
+        if monitoring_key in patient_data:
+            del patient_data[monitoring_key]
 
         # Reset the entire conversation
         conversation.messages = []
@@ -354,23 +333,39 @@ async def dashboard(patient_id: str):
         monitoring_file = f"{DATA_DIR}/{patient_id}_monitoring.json"
         
         while True:
-            # Initialize empty dict if patient_id not in patient_data but files exist
-            if (os.path.exists(patient_file) or os.path.exists(monitoring_file)) and patient_id not in patient_data:
-                patient_data[patient_id] = {}
-                
+            dashboard_data = {}
+            
+            # Load patient registration data
+            if os.path.exists(patient_file) and os.path.getsize(patient_file) > 0:
+                with open(patient_file, 'r') as f:
+                    dashboard_data.update(json.load(f))
+                    
+            # Load monitoring data (get the latest entry)
+            if os.path.exists(monitoring_file) and os.path.getsize(monitoring_file) > 0:
+                with open(monitoring_file, 'r') as f:
+                    file_content = f.read().strip()
+                    if file_content:
+                        monitoring_data = json.loads(file_content)
+                        if isinstance(monitoring_data, list) and len(monitoring_data) > 0:
+                            # Get the latest monitoring entry
+                            latest_monitoring = monitoring_data[-1]
+                            dashboard_data.update(latest_monitoring)
+                        elif isinstance(monitoring_data, dict):
+                            dashboard_data.update(monitoring_data)
+            
+            # Also check in-memory data for active sessions
             if patient_id in patient_data:
-                if os.path.exists(patient_file) and os.path.getsize(patient_file) > 0:
-                    with open(patient_file, 'r') as f:
-                        patient_data[patient_id].update(json.load(f))
-                        
-                if os.path.exists(monitoring_file) and os.path.getsize(monitoring_file) > 0:
-                    with open(monitoring_file, 'r') as f:
-                        patient_data[patient_id].update(json.load(f)[-1])
+                dashboard_data.update(patient_data[patient_id])
                 
-                yield {
-                    "event": "update",
-                    "data": json.dumps(patient_data[patient_id])
-                }
+            # Check for active monitoring session
+            monitoring_key = f"{patient_id}_monitoring_session"
+            if monitoring_key in patient_data:
+                dashboard_data.update(patient_data[monitoring_key])
+            
+            yield {
+                "event": "update",
+                "data": json.dumps(dashboard_data)
+            }
             
             await asyncio.sleep(1)
 
@@ -688,6 +683,74 @@ def generate_final_response(initial_category, new_category, waiting_time):
     """
 
     return response
+
+
+# Voice endpoints for Whisper API integration
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    Transcribe audio using OpenAI Whisper API
+    """
+    try:
+        # Read the uploaded file
+        audio_data = await file.read()
+        
+        # Prepare the request to OpenAI Whisper API
+        async with httpx.AsyncClient() as client:
+            files = {
+                'file': (file.filename, audio_data, file.content_type),
+                'model': (None, 'whisper-1'),
+                'language': (None, 'en')
+            }
+            
+            response = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                files=files
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail="Error calling Whisper API")
+            
+            result = response.json()
+            return {"transcription": result["text"]}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
+
+
+@app.post("/text-to-speech")
+async def text_to_speech(request: dict):
+    """
+    Convert text to speech using OpenAI TTS API
+    """
+    try:
+        text = request.get("text", "")
+        if not text:
+            raise HTTPException(status_code=400, detail="No text provided")
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                json={
+                    "model": "tts-1",
+                    "input": text,
+                    "voice": "alloy",
+                    "response_format": "mp3"
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail="Error calling TTS API")
+            
+            # Convert audio to base64 for frontend
+            audio_base64 = base64.b64encode(response.content).decode('utf-8')
+            return {"audio": audio_base64}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating speech: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import PatientDashboard from "./PatientDashboard";
-
+import { VoiceInputComponent, VoiceOutputComponent } from "./VoiceComponent";
 
 const ChatComponent = ({
   conversation,
@@ -9,6 +9,7 @@ const ChatComponent = ({
   input,
   setInput,
   mode,
+  endConversation,
 }) => {
   const messagesEndRef = useRef(null);
 
@@ -18,30 +19,74 @@ const ChatComponent = ({
 
   useEffect(scrollToBottom, [conversation]);
 
+  // Handle voice transcription
+  const handleTranscription = (transcription) => {
+    setInput(transcription);
+  };
+
+  // Trigger text-to-speech for assistant responses
+  useEffect(() => {
+    const lastMessage = conversation[conversation.length - 1];
+    if (
+      lastMessage &&
+      lastMessage.role === "assistant" &&
+      window.voiceComponent
+    ) {
+      window.voiceComponent.speakText(lastMessage.content);
+    }
+  }, [conversation]);
+
   return (
     <div>
-      <div className="bg-gray-100 p-4 rounded-lg mb-4 h-[36rem] overflow-y-auto">
-        {conversation.map((message, index) => (
-          <div
-            key={index}
-            className={`mb-2 ${
-              message.role === "user" ? "text-black" : "text-black"
-            }`}
-          >
-            <strong>{message.role === "user" ? "You:" : "Assistant:"}</strong>{" "}
-            {message.content}
+      {/* Conversation Box */}
+      <div className="bg-gray-100 rounded-lg mb-4 h-[42rem] relative">
+        {/* Scrollable content area */}
+        <div
+          className="p-4 overflow-y-auto h-full"
+          style={{ paddingBottom: conversation.length > 1 ? "4rem" : "1rem" }}
+        >
+          {conversation.map((message, index) => (
+            <div
+              key={index}
+              className={`mb-2 ${
+                message.role === "user" ? "text-black" : "text-black"
+              }`}
+            >
+              <strong>{message.role === "user" ? "You:" : "Assistant:"}</strong>{" "}
+              {message.content}
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* End Conversation Button - fixed at bottom of container */}
+        {conversation.length > 1 && (
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
+            <button
+              onClick={endConversation}
+              className="px-4 py-2 text-white rounded-lg font-medium transition-all duration-300 hover:scale-105 shadow-lg bg-gray-400 hover:bg-red-500"
+            >
+              End Conversation
+            </button>
           </div>
-        ))}
-        <div ref={messagesEndRef} />
+        )}
       </div>
-      <div className="flex gap-2">
+
+      {/* Input area with voice button on the left */}
+      <div className="flex gap-2 items-center">
+        {/* Voice Input Button */}
+        <VoiceInputComponent
+          onTranscription={handleTranscription}
+          mode={mode}
+        />
+
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Type your message here..."
-          className="flex-grow border-2 gray-400 rounded px-2 py-1"
+          placeholder="Type your message here or use voice recording..."
+          className="flex-grow border-2 gray-400 rounded px-3 py-3 h-12"
         />
         <button
           onClick={sendMessage}
@@ -148,7 +193,7 @@ const App = () => {
         newMessage,
         {
           role: "assistant",
-          content: "I'm sorry, there was an error processing your request.",
+          content: "I'm sorry, there was an internet error. Please call me back by typing any message.",
         },
       ]);
     }
@@ -168,6 +213,33 @@ const App = () => {
     }
   };
 
+  const endConversation = async () => {
+    try {
+      const endpoint = mode === "monitor" ? "/monitor_patient" : "/chat";
+      const response = await axios.post(`http://localhost:8000${endpoint}`, {
+        messages: conversation,
+        patient_id: patientId,
+        end_conversation: true,
+      });
+
+      // Always show the final response when manually ending conversation
+      setConversation([{ role: "assistant", content: response.data.response }]);
+      setShowNotification(true);
+
+      // Reset state
+      setPatientId("");
+    } catch (error) {
+      console.error("Error ending conversation:", error);
+      setConversation([
+        ...conversation,
+        {
+          role: "assistant",
+          content: "I'm sorry, there was an error ending the conversation.",
+        },
+      ]);
+    }
+  };
+
   return (
     <div className="container mx-auto p-4">
       <div className="relative h-16 mb-6">
@@ -175,7 +247,7 @@ const App = () => {
           Emergency Department Assistant
         </h1>
       </div>
-      <div className="mb-4 -translate-y-1/3">
+      <div className="mb-4 -translate-y-1/3 flex items-center gap-4">
         <select
           value={mode}
           onChange={handleModeChange}
@@ -185,6 +257,9 @@ const App = () => {
           <option value="monitor">Monitoring Mode 🩺 </option>
           <option value="dashboard">Patient Dashboard 📋</option>
         </select>
+
+        {/* Voice Output Toggle - only show in chat modes */}
+        {mode !== "dashboard" && <VoiceOutputComponent mode={mode} />}
       </div>
       {mode === "dashboard" ? (
         <>
@@ -212,6 +287,7 @@ const App = () => {
             input={input}
             setInput={setInput}
             mode={mode}
+            endConversation={endConversation}
           />
           <Notification
             message={
